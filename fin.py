@@ -189,7 +189,7 @@ def initialize_agent():
     tools = [
         get_employee_by_name,
         get_schema,
-        # advanced_empolyee_search,
+        advanced_empolyee_search,
         search_employees_by_salary,
         get_department_analytics
     ]
@@ -199,6 +199,8 @@ def initialize_agent():
         tools=tools,
         system_prompt="""
         answer the query using the tools 
+        Do NOT call RPC or database functions directly.
+        use tools only
         if no info found say "not found"
         there are two tables only in the database :
         1. **EmployeeDetail**
