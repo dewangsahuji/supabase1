@@ -11,6 +11,9 @@ load_dotenv()
 openai_api_key = os.getenv("OPENAI_API_KEY")
 
 # Define tools
+from langchain.tools import tool
+from supabase_client import supabase
+
 @tool
 def get_employee_by_name(name: str) -> str:
     """
@@ -18,7 +21,7 @@ def get_employee_by_name(name: str) -> str:
     Args:
         name , text
     Output:
-    -employeed_id , uuid
+    -employee_id , uuid
     -first_name , text
     -last_name , text
     -email , text
@@ -28,19 +31,20 @@ def get_employee_by_name(name: str) -> str:
     -location , text
     -manager_id , uuid (can be Null)
     -status , text    
+
     """
     try:
         res = (
             supabase
             .table("EmployeeDetail")
             .select("*")
-            .eq("first_name", name)
+            .eq("first_name", name.strip())    # Fixed: added parentheses to call the method
             .execute()
         )
+
         return res.data
     except Exception as e:
-        return f"Error: {e}"
-
+        return f"Error: {e}"  # Fixed: return proper error message instead of raising string
 
 @tool
 def get_schema(table_name: str) -> str:
