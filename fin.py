@@ -184,10 +184,10 @@ def initialize_agent():
     llm = ChatOpenAI(model="gpt-4o", temperature=0, api_key=openai_api_key)
     tools = [
         get_employee_by_name,
-        get_schema,
-        advanced_empolyee_search,
-        search_employees_by_salary,
-        get_department_analytics
+        # get_schema,
+        # advanced_empolyee_search,
+        # search_employees_by_salary,
+        # get_department_analytics
     ]
     
     agent = create_agent(
