@@ -11,40 +11,190 @@ load_dotenv()
 openai_api_key = os.getenv("OPENAI_API_KEY")
 
 # Define tools
-from langchain.tools import tool
-from supabase_client import supabase
+# @tool
+# def get_employee_by_name(name: str) -> str:
+#     """
+#     Searches employee by exact name,
+#     Args:
+#         name , text
+#     Output:
+#     -employeed_id , uuid
+#     -first_name , text
+#     -last_name , text
+#     -email , text
+#     -phone , text
+#     -date_of_joining , date
+#     -department , text
+#     -location , text
+#     -manager_id , uuid (can be Null)
+#     -status , text    
+#     """
+#     try:
+#         res = (
+#             supabase
+#             .table("EmployeeDetail")
+#             .select("*")
+#             .eq("first_name", name.strip())
+#             .execute()
+#         )
+#         return res.data
+#     except Exception as e:
+#         return f"Error: {e}"
+
+def get_first_name(name: str) -> str:
+    name = name.strip()
+    if not name:
+        return ""
+    
+    parts = name.split()
+    return parts[0] if parts else ""
+
+def get_last_name(name: str) -> str:
+    name = name.strip()
+    if not name:
+        return ""
+    
+    parts = name.split()
+    if len(parts) <= 1:
+        return ""
+    else:
+        return ' '.join(parts[1:])  # Everything after first name
 
 @tool
-def get_employee_by_name(name: str) -> str:
+def get_employee_by_name(name: str, search_type: str = "both", exact_match: bool = False, include_position: bool = False) -> str:
     """
-    Searches employee by exact name,
+    Searches employee by name with flexible matching options and optional position/salary details.
+    
     Args:
-        name , text
+        name: Employee name or email to search for
+        search_type: Type of search - "first_name", "last_name", "email", "both" (searches first and last name), or "auto" (searches all)
+        exact_match: If True, searches for exact match; if False, searches for partial matches
+        include_position: If True, includes current position and salary information
+    
     Output:
-    -employee_id , uuid
-    -first_name , text
-    -last_name , text
-    -email , text
-    -phone , text
-    -date_of_joining , date
-    -department , text
-    -location , text
-    -manager_id , uuid (can be Null)
-    -status , text    
-
+    - employee_id , uuid
+    - first_name , text
+    - last_name , text
+    - email , text
+    - phone , text
+    - date_of_joining , date
+    - department , text
+    - location , text
+    - manager_id , uuid (can be Null)
+    - status , text
+    - position_title , text (if include_position=True)
+    - grade , text (if include_position=True)
+    - salary_currency , text (if include_position=True)
+    - salary_amount , integer (if include_position=True)
+    - employment_type , text (if include_position=True)
     """
     try:
-        res = (
-            supabase
-            .table("EmployeeDetail")
-            .select("*")
-            .eq("first_name", name.strip())    # Fixed: added parentheses to call the method
-            .execute()
-        )
-
+        name = name.strip()
+        if not name:
+            return "Error: Name parameter cannot be empty"
+        
+        # Base query for employee details
+        query = supabase.table("EmployeeDetail").select("*")
+        
+        if search_type == "auto":
+            # Search in first name, last name, or email
+            if exact_match:
+                query = query.or_(f"first_name.eq.{name},last_name.eq.{name},email.eq.{name}")
+            else:
+                query = query.or_(f"first_name.ilike.%{name}%,last_name.ilike.%{name}%,email.ilike.%{name}%")
+        
+        elif search_type == "first_name":
+            # Use get_first_name function to extract first name from full name
+            first_name = get_first_name(name)
+            if not first_name:
+                return "Error: Could not extract first name from input"
+            
+            if exact_match:
+                query = query.eq("first_name", first_name)
+            else:
+                query = query.ilike("first_name", f"%{first_name}%")
+        
+        elif search_type == "last_name":
+            # Use get_last_name function to extract last name from full name
+            first_name = get_first_name(name)
+            last_name = get_last_name(name)
+            if not last_name:
+                return "Error: Could not extract last name from input"
+            
+            if exact_match:
+                query = query.eq("last_name", last_name)
+            else:
+                query = query.ilike("last_name", f"%{last_name}%")
+        
+        elif search_type == "both":
+            # Search in both first name AND last name fields
+            first_name = get_first_name(name)
+            last_name = get_last_name(name)
+            if exact_match:
+                query = query.or_(f"first_name.eq.{first_name},last_name.eq.{last_name}")
+            else:
+                query = query.or_(f"first_name.ilike.%{first_name}%,last_name.ilike.%{last_name}%")
+        
+        elif search_type == "email":
+            if exact_match:
+                query = query.eq("email", name)
+            else:
+                query = query.ilike("email", f"%{name}%")
+        
+        else:
+            return "Error: Invalid search_type. Use 'first_name', 'last_name', 'email', 'both', or 'auto'"
+        
+        # Execute the main query
+        res = query.execute()
+        
+        if not res.data:
+            return f"No employees found matching: {name}"
+        
+        # If position information is requested, join with EmployeePositionSalaryDetail
+        if include_position:
+            employees_with_position = []
+            for employee in res.data:
+                employee_id = employee['employee_id']
+                
+                # Get current position (where effective_to is null or in future)
+                position_query = (
+                    supabase.table("EmployeePositionSalaryDetail")
+                    .select("*")
+                    .eq("employee_id", employee_id)
+                    .or_("effective_to.is.null,effective_to.gt.now()")
+                    .order("effective_from", desc=True)
+                    .limit(1)
+                    .execute()
+                )
+                
+                # Add position data to employee record
+                if position_query.data:
+                    position_data = position_query.data[0]
+                    employee.update({
+                        'position_title': position_data.get('position_title'),
+                        'grade': position_data.get('grade'),
+                        'salary_currency': position_data.get('salary_currency'),
+                        'salary_amount': position_data.get('salary_amount'),
+                        'employment_type': position_data.get('employment_type')
+                    })
+                else:
+                    # Add null values if no position data found
+                    employee.update({
+                        'position_title': None,
+                        'grade': None,
+                        'salary_currency': None,
+                        'salary_amount': None,
+                        'employment_type': None
+                    })
+                
+                employees_with_position.append(employee)
+            
+            return employees_with_position
+        
         return res.data
+        
     except Exception as e:
-        return f"Error: {e}"  # Fixed: return proper error message instead of raising string
+        return f"Error: {str(e)}"
 
 @tool
 def get_schema(table_name: str) -> str:
@@ -191,7 +341,8 @@ def initialize_agent():
         get_schema,
         advanced_empolyee_search,
         search_employees_by_salary,
-        get_department_analytics
+        get_department_analytics,
+        
     ]
     
     agent = create_agent(
@@ -200,8 +351,6 @@ def initialize_agent():
         system_prompt="""
         answer the query using the tools 
         Do NOT call RPC or database functions directly.
-        use tools only
-        if no info found say "not found"
         there are two tables only in the database :
         1. **EmployeeDetail**
         - `employee_id`: UUID
