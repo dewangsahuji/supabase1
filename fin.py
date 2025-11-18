@@ -199,8 +199,6 @@ def initialize_agent():
         tools=tools,
         system_prompt="""
         answer the query using the tools 
-        Do NOT call RPC or database functions directly.
-        use tools only
         if no info found say "not found"
         there are two tables only in the database :
         1. **EmployeeDetail**
