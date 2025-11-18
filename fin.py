@@ -189,7 +189,7 @@ def initialize_agent():
     tools = [
         get_employee_by_name,
         get_schema,
-        advanced_empolyee_search,
+        # advanced_empolyee_search,
         search_employees_by_salary,
         get_department_analytics
     ]
